@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlowX Agent</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ─── Toast ─── */
+    .toast-wrap {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 9999; pointer-events: none;
+    }
+    .toast {
+      padding: 8px 18px; border-radius: 10px;
+      font-size: 12px; font-weight: 500;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      color: #334155;
+      opacity: 0; transition: opacity 0.25s, transform 0.25s;
+      transform: translateY(-8px);
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.ok { border-left: 3px solid #3b82f6; }
+    .toast.err { border-left: 3px solid #ef4444; }
+
+    /* ─── 顶部拖拽区 ─── */
+    .titlebar {
+      height: 38px;
+      -webkit-app-region: drag;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(148,163,184,0.1);
+    }
+    .titlebar-text {
+      font-size: 12px; font-weight: 600; color: #94a3b8; letter-spacing: 0.5px;
+    }
+
+    /* ─── 页签导航 ─── */
+    .tab-bar {
+      display: flex;
+      padding: 0 16px;
+      background: rgba(255,255,255,0.5);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(148,163,184,0.08);
+    }
+    .tab-item {
+      flex: 1;
+      text-align: center;
+      padding: 10px 0 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #94a3b8;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+      -webkit-app-region: no-drag;
+    }
+    .tab-item:hover { color: #64748b; }
+    .tab-item.active { color: #3b82f6; font-weight: 600; }
+    .tab-item.active::after {
+      content: '';
+      position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 20px; height: 2px; border-radius: 2px;
+      background: #3b82f6;
+    }
+    .tab-icon { font-size: 14px; display: block; margin-bottom: 2px; }
+
+    /* ─── 页面容器 ─── */
+    .pages {
+      height: calc(100vh - 38px - 42px);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .page { display: none; padding: 20px; }
+    .page.active { display: block; }
+    .pages::-webkit-scrollbar { width: 4px; }
+    .pages::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.15); border-radius: 4px; }
+
+    /* ─── 品牌区 ─── */
+    .brand {
+      text-align: center;
+      padding: 12px 0 8px;
+    }
+    .brand-logo {
+      width: 56px; height: 56px;
+      border-radius: 16px;
+      display: inline-block;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(59,130,246,0.12);
+      margin-bottom: 10px;
+    }
+    .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .brand h1 {
+      font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: #0f172a;
+    }
+    .brand p {
+      font-size: 11px; color: #94a3b8; margin-top: 2px;
+    }
+
+    /* ─── 状态卡片 ─── */
+    .glass-card {
+      background: rgba(255,255,255,0.7);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(148,163,184,0.12);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .status-label { font-size: 12px; color: #64748b; }
+    .status-value {
+      font-size: 13px; font-weight: 600; color: #1e293b;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-green { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.35); }
+    .dot-red { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.35); }
+    .dot-blue { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,0.35); animation: pulse 1.5s infinite; }
+    .dot-gray { background: #cbd5e1; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .divider { height: 1px; background: rgba(148,163,184,0.1); margin: 8px 0; }
+
+    /* ─── 工具列表 ─── */
+    .section-title {
+      font-size: 11px; color: #94a3b8; text-transform: uppercase;
+      letter-spacing: 1px; margin: 16px 0 8px; font-weight: 600;
+    }
+    .tool-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 10px; margin-bottom: 4px;
+      background: rgba(255,255,255,0.5);
+      border: 1px solid rgba(148,163,184,0.08);
+      transition: all 0.15s;
+    }
+    .tool-item:hover {
+      background: rgba(255,255,255,0.85);
+      border-color: rgba(148,163,184,0.15);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .tool-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+    .tool-icon.pub { background: #eff6ff; color: #3b82f6; }
+    .tool-icon.list { background: #f0fdf4; color: #22c55e; }
+    .tool-icon.auth { background: #fefce8; color: #eab308; }
+    .tool-icon.img { background: #fdf2f8; color: #ec4899; }
+    .tool-icon.file { background: #f0f9ff; color: #0ea5e9; }
+    .tool-name { font-size: 12px; font-weight: 600; color: #1e293b; }
+    .tool-desc { font-size: 10px; color: #94a3b8; }
+
+    /* ─── 快捷指令 ─── */
+    .shortcut-btn {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px; border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.1);
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(8px);
+      cursor: pointer; transition: all 0.15s;
+      color: #1e293b; font-size: 13px; font-weight: 500;
+      width: 100%; margin-bottom: 8px;
+    }
+    .shortcut-btn:hover {
+      background: rgba(255,255,255,0.9);
+      border-color: rgba(59,130,246,0.2);
+      box-shadow: 0 4px 16px rgba(59,130,246,0.08);
+    }
+    .shortcut-btn:active { transform: scale(0.98); }
+    .shortcut-icon {
+      width: 32px; height: 32px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; background: #eff6ff; color: #3b82f6; flex-shrink: 0;
+    }
+    .shortcut-info { flex: 1; }
+    .shortcut-title { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .shortcut-desc { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+    .shortcut-arrow { color: #cbd5e1; font-size: 12px; }
+
+    /* ─── MCP 配置展示 ─── */
+    .config-block {
+      background: #f8fafc;
+      border: 1px solid rgba(148,163,184,0.12);
+      border-radius: 10px;
+      padding: 12px;
+      font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+      font-size: 10px;
+      line-height: 1.5;
+      color: #475569;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-top: 8px;
+    }
+
+    /* ─── 日志区 ─── */
+    .logs-box {
+      background: #f8fafc;
+      border: 1px solid rgba(148,163,184,0.1);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+      font-size: 10px;
+      line-height: 1.7;
+      min-height: 200px;
+    }
+    .log-line { display: flex; gap: 8px; }
+    .log-time { color: #cbd5e1; flex-shrink: 0; }
+    .log-msg-info { color: #64748b; }
+    .log-msg-warn { color: #eab308; }
+    .log-msg-error { color: #ef4444; }
+
+    /* ─── 底部 ─── */
+    .footer {
+      text-align: center; padding: 12px 0 8px;
+      font-size: 10px; color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toast -->
+  <div class="toast-wrap"><div class="toast" id="toast"></div></div>
+
+  <!-- 顶部拖拽区 -->
+  <div class="titlebar"><span class="titlebar-text">FlowX Agent</span></div>
+
+  <!-- 页签导航 -->
+  <div class="tab-bar">
+    <div class="tab-item active" data-tab="home" onclick="switchTab('home')">
+      <span class="tab-icon">🏠</span>主页
+    </div>
+    <div class="tab-item" data-tab="shortcuts" onclick="switchTab('shortcuts')">
+      <span class="tab-icon">⚡</span>快捷指令
+    </div>
+    <div class="tab-item" data-tab="logs" onclick="switchTab('logs')">
+      <span class="tab-icon">📋</span>日志
+    </div>
+  </div>
+
+  <!-- 页面内容 -->
+  <div class="pages">
+
+    <!-- ====== 主页 ====== -->
+    <div class="page active" id="page-home">
+      <div class="brand">
+        <div class="brand-logo"><img src="icon.png" alt="FlowX" /></div>
+        <h1>FlowX Agent</h1>
+        <p>本地 AI 工具桥接服务</p>
+      </div>
+
+      <!-- 状态卡片 -->
+      <div class="glass-card">
+        <div class="status-row">
+          <span class="status-label">服务状态</span>
+          <span class="status-value" id="serverStatus">
+            <span class="dot dot-gray"></span> 等待启动
+          </span>
+        </div>
+        <div class="divider"></div>
+        <div class="status-row">
+          <span class="status-label">监听端口</span>
+          <span class="status-value" id="serverPort">8765</span>
+        </div>
+        <div class="divider"></div>
+        <div class="status-row">
+          <span class="status-label">Chrome 插件</span>
+          <span class="status-value" id="extStatus">
+            <span class="dot dot-gray"></span> 未连接
+          </span>
+        </div>
+        <div class="divider"></div>
+        <div class="status-row">
+          <span class="status-label">MCP 工具连接</span>
+          <span class="status-value" id="toolCount">0</span>
+        </div>
+      </div>
+
+      <!-- MCP 工具 -->
+      <div class="section-title">MCP 工具</div>
+      <div class="tool-item">
+        <div class="tool-icon pub">📝</div>
+        <div><div class="tool-name">flowx_publish</div><div class="tool-desc">发布内容到平台</div></div>
+      </div>
+      <div class="tool-item">
+        <div class="tool-icon list">📋</div>
+        <div><div class="tool-name">flowx_list_platforms</div><div class="tool-desc">查看平台及登录状态</div></div>
+      </div>
+      <div class="tool-item">
+        <div class="tool-icon auth">🔐</div>
+        <div><div class="tool-name">flowx_check_auth</div><div class="tool-desc">检查平台登录</div></div>
+      </div>
+      <div class="tool-item">
+        <div class="tool-icon img">🖼️</div>
+        <div><div class="tool-name">flowx_upload_images</div><div class="tool-desc">上传图片获取 URL</div></div>
+      </div>
+      <div class="tool-item">
+        <div class="tool-icon file">📂</div>
+        <div><div class="tool-name">flowx_read_local_files</div><div class="tool-desc">读取本地文件</div></div>
+      </div>
+
+      <div class="footer">FlowX Agent v1.0.0 · ws://localhost:8765</div>
+    </div>
+
+    <!-- ====== 快捷指令 ====== -->
+    <div class="page" id="page-shortcuts">
+      <div class="section-title" style="margin-top:0">快捷操作</div>
+
+      <button class="shortcut-btn" onclick="copyMcpConfig()">
+        <span class="shortcut-icon">⎘</span>
+        <div class="shortcut-info">
+          <div class="shortcut-title">复制 MCP 配置</div>
+          <div class="shortcut-desc">粘贴到 Cursor / Claude Desktop / Codex 等 Agent</div>
+        </div>
+        <span class="shortcut-arrow">›</span>
+      </button>
+
+      <button class="shortcut-btn" onclick="copyWsUrl()">
+        <span class="shortcut-icon">🔗</span>
+        <div class="shortcut-info">
+          <div class="shortcut-title">复制 WebSocket 地址</div>
+          <div class="shortcut-desc">ws://localhost:8765</div>
+        </div>
+        <span class="shortcut-arrow">›</span>
+      </button>
+
+      <button class="shortcut-btn" onclick="openDocs()">
+        <span class="shortcut-icon">📖</span>
+        <div class="shortcut-info">
+          <div class="shortcut-title">查看使用文档</div>
+          <div class="shortcut-desc">打开 GitHub 仓库文档</div>
+        </div>
+        <span class="shortcut-arrow">›</span>
+      </button>
+
+      <button class="shortcut-btn" onclick="copyCliPublish()">
+        <span class="shortcut-icon">🚀</span>
+        <div class="shortcut-info">
+          <div class="shortcut-title">复制 CLI 发布命令</div>
+          <div class="shortcut-desc">node dist/cli.js publish ...</div>
+        </div>
+        <span class="shortcut-arrow">›</span>
+      </button>
+
+      <div class="section-title">MCP 配置预览</div>
+      <div class="config-block" id="configPreview"></div>
+
+      <div class="section-title">CLI 命令示例</div>
+      <div class="config-block"># 发布文章到掘金
+node dist/cli.js publish \\
+  --title "我的文章" \\
+  --content "正文..." \\
+  --platforms juejin
+
+# 图文发布到小红书
+node dist/cli.js publish \\
+  --title "今日笔记" \\
+  --content "正文..." \\
+  --platforms xiaohongshu \\
+  --publish-mode image_text
+
+# 查看平台列表
+node dist/cli.js list-platforms</div>
+
+      <div class="footer">FlowX Agent v1.0.0</div>
+    </div>
+
+    <!-- ====== 日志 ====== -->
+    <div class="page" id="page-logs">
+      <div class="section-title" style="margin-top:0">运行日志</div>
+      <div class="logs-box" id="logBox">
+        <div style="color:#cbd5e1;text-align:center;padding:40px 0;font-size:12px;">等待日志...</div>
+      </div>
+      <div class="footer">FlowX Agent v1.0.0</div>
+    </div>
+
+  </div>
+
+  <script>
+    const api = window.flowxAPI
+
+    // ─── 页签切换 ───
+    function switchTab(name) {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name))
+      document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name))
+    }
+
+    // ─── Toast ───
+    let toastTimer = null
+    function showToast(msg, type = 'ok') {
+      const el = document.getElementById('toast')
+      el.textContent = msg
+      el.className = 'toast ' + type + ' show'
+      clearTimeout(toastTimer)
+      toastTimer = setTimeout(() => { el.classList.remove('show') }, 2200)
+    }
+
+    // ─── 状态渲染 ───
+    function renderStatus(s) {
+      if (!s) return
+      const serverEl = document.getElementById("serverStatus")
+      serverEl.innerHTML = s.running
+        ? '<span class="dot dot-green"></span> 运行中'
+        : '<span class="dot dot-red"></span> 已停止'
+
+      document.getElementById("serverPort").textContent = s.port
+
+      const extEl = document.getElementById("extStatus")
+      extEl.innerHTML = s.extensionConnected
+        ? '<span class="dot dot-green"></span> 已连接'
+        : '<span class="dot dot-gray"></span> 未连接'
+
+      document.getElementById("toolCount").textContent = s.toolCount
+
+      // 日志
+      const logBox = document.getElementById("logBox")
+      if (s.logs.length === 0) {
+        logBox.innerHTML = '<div style="color:#cbd5e1;text-align:center;padding:40px 0;font-size:12px;">暂无日志</div>'
+      } else {
+        logBox.innerHTML = s.logs.map(l =>
+          `<div class="log-line"><span class="log-time">${l.time}</span><span class="log-msg-${l.level}">${l.msg}</span></div>`
+        ).join("")
+        logBox.scrollTop = logBox.scrollHeight
+      }
+    }
+
+    api.onStatus(renderStatus)
+    api.getStatus().then(renderStatus)
+
+    // ─── MCP 配置 ───
+    const mcpConfig = JSON.stringify({
+      mcpServers: {
+        "flowx-publish": {
+          command: "node",
+          args: ["<path>/local-agent/dist/mcp-bridge.js"],
+        },
+      },
+    }, null, 2)
+    document.getElementById("configPreview").textContent = mcpConfig
+
+    // ─── 快捷指令 ───
+    function copyMcpConfig() {
+      navigator.clipboard.writeText(mcpConfig).then(() => showToast("MCP 配置已复制到剪贴板"))
+    }
+    function copyWsUrl() {
+      navigator.clipboard.writeText("ws://localhost:8765").then(() => showToast("WebSocket 地址已复制"))
+    }
+    function openDocs() {
+      showToast("正在打开文档...")
+      api.openExternal("https://github.com/user/flowx-agent")
+    }
+    function copyCliPublish() {
+      const cmd = 'node dist/cli.js publish --title "标题" --content "正文" --platforms juejin'
+      navigator.clipboard.writeText(cmd).then(() => showToast("CLI 命令已复制"))
+    }
+  </script>
+</body>
+</html>

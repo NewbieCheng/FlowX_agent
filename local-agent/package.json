@@ -1,0 +1,67 @@
+{
+  "name": "flowx-local-agent",
+  "version": "1.0.0",
+  "description": "FlowX 本地 Agent — WebSocket 服务端，桥接 Chrome 插件与外部 AI 工具",
+  "repository": "",
+  "main": "dist/main.js",
+  "bin": "dist/index.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-renderer.js",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "electron:dev": "tsc && electron .",
+    "electron:build": "tsc && electron-builder",
+    "pack": "pkg . --targets node18-win-x64,node18-mac-x64,node18-mac-arm64,node18-linux-x64 --output dist/bin/flowx-agent",
+    "pack:win": "pkg . --targets node18-win-x64 --output dist/bin/flowx-agent-win.exe",
+    "pack:mac": "pkg . --targets node18-mac-x64,node18-mac-arm64 --output dist/bin/flowx-agent-macos",
+    "pack:linux": "pkg . --targets node18-linux-x64 --output dist/bin/flowx-agent-linux"
+  },
+  "build": {
+    "appId": "com.flowx.local-agent",
+    "productName": "FlowX Agent",
+    "publish": null,
+    "directories": { "output": "release" },
+    "files": [
+      "dist/**/*",
+      "!dist/bin",
+      "!dist/cli.js"
+    ],
+    "extraResources": [
+      { "from": "dist/renderer", "to": "renderer" }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "assets/icon.png"
+    }
+  },
+  "pkg": {
+    "assets": ["dist/**/*"],
+    "scripts": ["dist/**/*.js"]
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@types/ws": "^8.5.10",
+    "@yao-pkg/pkg": "^5.15.1",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.0",
+    "typescript": "^5.3.3"
+  }
+}
